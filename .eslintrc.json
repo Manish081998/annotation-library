@@ -1,0 +1,26 @@
+{
+  "root": true,
+  "ignorePatterns": ["dist/**", "node_modules/**", "*.js"],
+  "overrides": [
+    {
+      "files": ["*.ts"],
+      "parser": "@typescript-eslint/parser",
+      "parserOptions": {
+        "project": ["./tsconfig.base.json"],
+        "createDefaultProgram": true
+      },
+      "plugins": ["@typescript-eslint"],
+      "extends": ["plugin:@typescript-eslint/recommended"],
+      "rules": {
+        "@typescript-eslint/explicit-function-return-type": "error",
+        "@typescript-eslint/no-explicit-any": "error",
+        "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+        "@typescript-eslint/consistent-type-imports": "error",
+        "@typescript-eslint/no-non-null-assertion": "warn",
+        "@typescript-eslint/prefer-readonly": "error",
+        "no-console": "warn",
+        "eqeqeq": ["error", "always"]
+      }
+    }
+  ]
+}

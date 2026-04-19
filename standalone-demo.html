@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Document Annotation Demo</title>
+<style>
+/* ─── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 13px; color: #1c1c1e; background: #f2f2f7; -webkit-font-smoothing: antialiased; }
+
+/* ─── Layout ─────────────────────────────────────────────────────────────── */
+#app          { display: flex; flex-direction: column; height: 100%; }
+#toolbar      { display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #1c1c1e; min-height: 48px; flex-shrink: 0; flex-wrap: wrap; user-select: none; }
+#work-area    { display: flex; flex: 1; overflow: hidden; }
+#canvas-host  { flex: 1; overflow: auto; background: #525659; display: flex; align-items: flex-start; justify-content: center; padding: 28px; position: relative; }
+#panel        { width: 256px; background: #fff; border-left: 1px solid #d1d1d6; display: flex; flex-direction: column; flex-shrink: 0; }
+
+/* ─── Document surface ───────────────────────────────────────────────────── */
+#doc-wrapper  { position: relative; flex-shrink: 0; }
+#doc-surface  { display: block; box-shadow: 0 4px 24px rgba(0,0,0,0.4); user-select: none; }
+#canvas-base, #canvas-sel, #canvas-ov {
+  position: absolute; top: 0; left: 0; pointer-events: none;
+}
+#canvas-ov    { pointer-events: all; }
+
+/* ─── Toolbar ────────────────────────────────────────────────────────────── */
+.tb-sep { width: 1px; height: 28px; background: rgba(255,255,255,0.2); margin: 0 4px; flex-shrink: 0; }
+.tb-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 5px 9px; min-width: 38px; min-height: 38px;
+  border: 1px solid transparent; border-radius: 7px; background: transparent;
+  cursor: pointer; color: rgba(255,255,255,0.8); font-size: 11px; transition: background .12s;
+}
+.tb-btn .ico { font-size: 17px; line-height: 1; }
+.tb-btn:hover   { background: rgba(255,255,255,0.12); }
+.tb-btn.active  { background: #007aff; border-color: #007aff; color: #fff; }
+.tb-btn:disabled { opacity: .35; cursor: not-allowed; }
+.tb-btn.danger:hover { background: #ff3b30; border-color: #ff3b30; color: #fff; }
+.tb-spacer { flex: 1; }
+
+/* colour swatch */
+#colour-wrap { position: relative; }
+#swatch      { display: block; width: 22px; height: 22px; border-radius: 5px; border: 2px solid rgba(255,255,255,0.5); }
+#colour-drop {
+  display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+  background: #fff; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+  padding: 10px; min-width: 172px;
+}
+#colour-drop.open { display: block; }
+.c-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 5px; margin-bottom: 8px; }
+.c-dot  { width: 22px; height: 22px; border-radius: 5px; border: 1px solid rgba(0,0,0,0.15); cursor: pointer; transition: transform .1s; }
+.c-dot:hover { transform: scale(1.18); }
+.c-custom { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #636366; cursor: pointer; }
+.c-custom input[type=color] { width: 26px; height: 26px; border: none; border-radius: 5px; padding: 0; cursor: pointer; }
+
+select.tb-sel { font-size: 12px; padding: 4px 6px; border: 1px solid rgba(255,255,255,0.25); border-radius: 6px; background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; height: 32px; }
+select.tb-sel option { background: #1c1c1e; color: #fff; }
+
+.range-wrap { display: flex; align-items: center; gap: 5px; }
+.range-lbl  { font-size: 10px; color: rgba(255,255,255,0.6); white-space: nowrap; }
+input[type=range].tb-range { width: 72px; accent-color: #007aff; cursor: pointer; }
+.range-val  { font-size: 11px; color: rgba(255,255,255,0.8); min-width: 32px; }
+
+/* zoom bar inside canvas-host */
+#zoom-bar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; background: rgba(28,28,30,0.8); backdrop-filter: blur(8px); border-radius: 20px; padding: 5px 14px; z-index: 5; }
+#zoom-bar button { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+#zoom-bar button:hover { background: rgba(255,255,255,0.15); }
+#zoom-label { font-size: 12px; color: rgba(255,255,255,0.9); min-width: 42px; text-align: center; }
+
+/* ─── Panel ──────────────────────────────────────────────────────────────── */
+#panel-header { padding: 10px 14px 8px; border-bottom: 1px solid #f0f0f5; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+#panel-header h3 { font-size: 13px; font-weight: 600; }
+#panel-count  { font-size: 11px; background: #e5e5ea; border-radius: 10px; padding: 1px 8px; color: #636366; }
+#panel-search { padding: 8px 10px; flex-shrink: 0; border-bottom: 1px solid #f0f0f5; }
+#panel-search input { width: 100%; padding: 5px 9px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 12px; outline: none; background: #f2f2f7; }
+#panel-search input:focus { border-color: #007aff; background: #fff; }
+#panel-list { flex: 1; overflow-y: auto; }
+.p-item { display: flex; gap: 9px; padding: 9px 12px; border-bottom: 1px solid #f5f5fa; cursor: pointer; transition: background .1s; position: relative; }
+.p-item:hover { background: #f5f5fa; }
+.p-item.selected { background: #e8f0fe; }
+.p-icon { flex-shrink: 0; width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; margin-top: 1px; }
+.p-body { flex: 1; min-width: 0; }
+.p-type { font-size: 12px; font-weight: 600; }
+.p-author { font-size: 10px; color: #8e8e93; }
+.p-text  { font-size: 11px; color: #3a3a3c; word-break: break-word; line-height: 1.4; margin-top: 2px; max-height: 36px; overflow: hidden; }
+.p-del   { position: absolute; right: 8px; top: 8px; background: none; border: none; font-size: 16px; color: #c7c7cc; cursor: pointer; display: none; }
+.p-item:hover .p-del { display: block; }
+.p-del:hover { color: #ff3b30; }
+.p-empty { padding: 40px 16px; text-align: center; color: #8e8e93; }
+.p-empty .p-hint { font-size: 11px; margin-top: 5px; line-height: 1.5; }
+
+/* ─── Text editor overlay ────────────────────────────────────────────────── */
+#text-editor { display: none; position: absolute; z-index: 50; border: 2px solid #007aff; border-radius: 4px; padding: 4px; background: rgba(255,255,255,0.92); resize: none; font-size: 14px; font-family: Arial, sans-serif; color: #1c1c1e; outline: none; overflow: hidden; min-width: 60px; min-height: 24px; }
+
+/* ─── Cursor styles ──────────────────────────────────────────────────────── */
+.cur-default   { cursor: default; }
+.cur-crosshair { cursor: crosshair; }
+.cur-text      { cursor: text; }
+.cur-move      { cursor: move; }
+.cur-cell      { cursor: cell; }
+.cur-grab      { cursor: grab; }
+.cur-nwse      { cursor: nwse-resize; }
+.cur-nesw      { cursor: nesw-resize; }
+.cur-ns        { cursor: ns-resize; }
+.cur-ew        { cursor: ew-resize; }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ── Toolbar ──────────────────────────────────────────────────────────── -->
+<div id="toolbar">
+  <!-- File -->
+  <button class="tb-btn" id="btn-import"   title="Import annotations (JSON)"><span class="ico">📂</span><span>Open</span></button>
+  <button class="tb-btn" id="btn-save"     title="Save annotations as JSON"><span class="ico">💾</span><span>Save</span></button>
+  <button class="tb-btn" id="btn-img"      title="Export annotated image (PNG)"><span class="ico">🖼</span><span>Export</span></button>
+  <div class="tb-sep"></div>
+
+  <!-- Undo/Redo -->
+  <button class="tb-btn" id="btn-undo" disabled title="Undo (Ctrl+Z)"><span class="ico">↩</span><span>Undo</span></button>
+  <button class="tb-btn" id="btn-redo" disabled title="Redo (Ctrl+Y)"><span class="ico">↪</span><span>Redo</span></button>
+  <div class="tb-sep"></div>
+
+  <!-- Tools -->
+  <button class="tb-btn active" data-tool="select"    title="Select (V)"><span class="ico">↖</span><span>Select</span></button>
+  <button class="tb-btn"        data-tool="highlight" title="Highlight (H)"><span class="ico">▬</span><span>Highlight</span></button>
+  <button class="tb-btn"        data-tool="freehand"  title="Draw (D)"><span class="ico">✏️</span><span>Draw</span></button>
+  <button class="tb-btn"        data-tool="text"      title="Text (T)"><span class="ico">T</span><span>Text</span></button>
+  <button class="tb-btn"        data-tool="comment"   title="Comment (C)"><span class="ico">💬</span><span>Note</span></button>
+  <button class="tb-btn"        data-tool="rectangle" title="Rectangle (R)"><span class="ico">▭</span><span>Rect</span></button>
+  <button class="tb-btn"        data-tool="ellipse"   title="Ellipse (E)"><span class="ico">○</span><span>Ellipse</span></button>
+  <button class="tb-btn"        data-tool="arrow"     title="Arrow (A)"><span class="ico">→</span><span>Arrow</span></button>
+  <button class="tb-btn"        data-tool="line"      title="Line (L)"><span class="ico">╱</span><span>Line</span></button>
+  <button class="tb-btn"        data-tool="eraser"    title="Eraser (X)"><span class="ico">⌫</span><span>Eraser</span></button>
+  <div class="tb-sep"></div>
+
+  <!-- Colour -->
+  <div id="colour-wrap">
+    <button class="tb-btn" id="btn-colour" title="Stroke colour">
+      <canvas id="swatch" width="22" height="22"></canvas>
+      <span>Colour</span>
+    </button>
+    <div id="colour-drop">
+      <div class="c-grid" id="colour-grid"></div>
+      <label class="c-custom">Custom <input type="color" id="custom-colour"></label>
+    </div>
+  </div>
+  <div class="tb-sep"></div>
+
+  <!-- Stroke width -->
+  <select class="tb-sel" id="sel-width" title="Stroke width">
+    <option value="1">1px</option>
+    <option value="2" selected>2px</option>
+    <option value="3">3px</option>
+    <option value="4">4px</option>
+    <option value="6">6px</option>
+    <option value="8">8px</option>
+    <option value="12">12px</option>
+  </select>
+  <div class="tb-sep"></div>
+
+  <!-- Opacity -->
+  <div class="range-wrap">
+    <span class="range-lbl">Opacity</span>
+    <input type="range" class="tb-range" id="range-opacity" min="10" max="100" step="5" value="100">
+    <span class="range-val" id="lbl-opacity">100%</span>
+  </div>
+  <div class="tb-sep"></div>
+
+  <!-- Delete -->
+  <button class="tb-btn danger" id="btn-delete" disabled title="Delete selected (Del)"><span class="ico">🗑</span><span>Delete</span></button>
+
+  <div class="tb-spacer"></div>
+
+  <!-- Zoom display -->
+  <span class="range-val" id="tb-zoom">100%</span>
+</div>
+
+<!-- ── Work area ─────────────────────────────────────────────────────────── -->
+<div id="work-area">
+
+  <!-- Canvas host -->
+  <div id="canvas-host">
+    <div id="doc-wrapper">
+      <canvas id="doc-surface"></canvas>
+      <canvas id="canvas-base"></canvas>
+      <canvas id="canvas-sel"></canvas>
+      <canvas id="canvas-ov"></canvas>
+      <textarea id="text-editor" spellcheck="true"></textarea>
+    </div>
+
+    <!-- Zoom bar -->
+    <div id="zoom-bar">
+      <button id="zout" title="Zoom out">−</button>
+      <span id="zoom-label">100%</span>
+      <button id="zin"  title="Zoom in">+</button>
+      <button id="zfit" title="Fit width" style="font-size:12px;padding:0 8px;width:auto">Fit</button>
+      <button id="zone" title="100%" style="font-size:12px;padding:0 8px;width:auto">100%</button>
+    </div>
+  </div>
+
+  <!-- Annotations panel -->
+  <div id="panel">
+    <div id="panel-header">
+      <h3>Annotations</h3>
+      <span id="panel-count">0</span>
+    </div>
+    <div id="panel-search"><input type="search" id="panel-filter" placeholder="Filter…"></div>
+    <div id="panel-list"></div>
+  </div>
+
+</div>
+</div><!-- #app -->
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════════════════
+//  ANNOTATION DEMO ENGINE
+//  Self-contained – no build step, no dependencies.
+//  Open in any modern browser and start annotating.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── Constants ────────────────────────────────────────────────────────────
+const DOC_W = 794;   // A4 @ 96dpi
+const DOC_H = 1123;
+const SCHEMA_VERSION = 1;
+const DOC_ID = 'demo-document-001';
+const AUTHOR  = 'Demo User';
+const HANDLE_R = 6;  // resize handle radius in doc units
+const COLOURS = ['#FF3B30','#FF9500','#FFCC00','#34C759','#007AFF','#5856D6','#FF2D55','#000000','#8E8E93','#FFFFFF','#FF6B35','#2D9CDB'];
+
+// ─── State ────────────────────────────────────────────────────────────────
+let annotations = [];          // [{id, type, style, geometry, meta, …}]
+let selectedIds = new Set();
+let activeTool  = 'select';
+let zoom        = 1;
+let activeStyle = { strokeColor: '#FF3B30', fillColor: 'rgba(255,59,48,0.18)', opacity: 1, strokeWidth: 2 };
+let baseDirty = true, selDirty = true;
+
+// ─── Command Stack ─────────────────────────────────────────────────────────
+const undoStack = [], redoStack = [];
+
+function pushUndo(cmd) {
+  undoStack.push(cmd);
+  redoStack.length = 0;
+  if (undoStack.length > 100) undoStack.shift();
+  syncUndoRedo();
+}
+
+function execCmd(cmd) { cmd.execute(); pushUndo(cmd); }
+
+function undo() {
+  if (!undoStack.length) return;
+  const cmd = undoStack.pop();
+  cmd.undo();
+  redoStack.push(cmd);
+  syncUndoRedo(); baseDirty = selDirty = true; renderAll();
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  const cmd = redoStack.pop();
+  cmd.execute();
+  undoStack.push(cmd);
+  syncUndoRedo(); baseDirty = selDirty = true; renderAll();
+}
+
+function syncUndoRedo() {
+  document.getElementById('btn-undo').disabled = !undoStack.length;
+  document.getElementById('btn-redo').disabled = !redoStack.length;
+}
+
+// Annotation commands
+function addCmd(annotation) {
+  return {
+    execute() { annotations.push(annotation); updatePanel(); },
+    undo()    { annotations = annotations.filter(a => a.id !== annotation.id); updatePanel(); },
+  };
+}
+
+function removeCmd(ids) {
+  const removed = ids.map(id => annotations.find(a => a.id === id)).filter(Boolean);
+  return {
+    execute() { annotations = annotations.filter(a => !ids.includes(a.id)); selectedIds.clear(); updatePanel(); syncDelete(); },
+    undo()    { annotations.push(...removed); updatePanel(); },
+  };
+}
+
+function updateCmd(id, patch) {
+  const prev = structuredClone(annotations.find(a => a.id === id));
+  return {
+    execute() { const a = annotations.find(a => a.id === id); if (a) Object.assign(a, patch); baseDirty = selDirty = true; renderAll(); },
+    undo()    { const a = annotations.find(a => a.id === id); if (a && prev) Object.assign(a, prev); baseDirty = selDirty = true; renderAll(); },
+  };
+}
+
+// ─── ID generator ─────────────────────────────────────────────────────────
+function uid() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────
+const dpr = Math.max(1, window.devicePixelRatio || 1);
+const cvBase = document.getElementById('canvas-base');
+const cvSel  = document.getElementById('canvas-sel');
+const cvOv   = document.getElementById('canvas-ov');
+const ctxBase = cvBase.getContext('2d');
+const ctxSel  = cvSel.getContext('2d');
+const ctxOv   = cvOv.getContext('2d');
+const docSurface = document.getElementById('doc-surface');
+
+function resizeCanvases() {
+  const w = Math.round(DOC_W * zoom);
+  const h = Math.round(DOC_H * zoom);
+  [cvBase, cvSel, cvOv, docSurface].forEach(c => {
+    c.width  = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    c.style.width  = w + 'px';
+    c.style.height = h + 'px';
+  });
+  ctxBase.scale(dpr, dpr); ctxSel.scale(dpr, dpr); ctxOv.scale(dpr, dpr);
+  paintDocument();
+  baseDirty = selDirty = true;
+}
+
+// ─── Draw document surface ─────────────────────────────────────────────────
+function paintDocument() {
+  const ctx = docSurface.getContext('2d');
+  const w = DOC_W * zoom, h = DOC_H * zoom;
+  ctx.scale(dpr, dpr);
+
+  // White background
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, DOC_W * zoom, DOC_H * zoom);
+
+  // Content (scaled)
+  ctx.save();
+  ctx.scale(zoom, zoom);
+
+  // Header band
+  ctx.fillStyle = '#f8f9fa';
+  ctx.fillRect(0, 0, DOC_W, 90);
+  ctx.fillStyle = '#007AFF';
+  ctx.fillRect(0, 0, 6, 90);
+  ctx.fillStyle = '#1c1c1e';
+  ctx.font = 'bold 24px Arial';
+  ctx.fillText('Project Report – Q3 2026', 26, 38);
+  ctx.font = '13px Arial';
+  ctx.fillStyle = '#636366';
+  ctx.fillText('Confidential · Annotate and save a copy using the toolbar above', 26, 62);
+
+  // Divider
+  ctx.fillStyle = '#e5e5ea';
+  ctx.fillRect(26, 94, DOC_W - 52, 1);
+
+  // Body text
+  ctx.fillStyle = '#1c1c1e';
+  ctx.font = 'bold 16px Arial';
+  ctx.fillText('1. Executive Summary', 26, 130);
+
+  ctx.font = '13px Arial';
+  ctx.fillStyle = '#3a3a3c';
+  wrapText(ctx, 'The Q3 results demonstrate strong momentum across all product lines. Revenue grew 18% year-over-year, driven primarily by the enterprise segment and new geographic markets. Operating margins improved to 24.3%, reflecting operational efficiencies introduced in Q2.', 26, 155, DOC_W - 52, 20);
+  wrapText(ctx, 'Customer satisfaction scores reached an all-time high of 4.7/5.0, and churn rate declined to 2.1% — the lowest since the company\'s founding. The product team shipped three major features ahead of schedule.', 26, 225, DOC_W - 52, 20);
+
+  // KPI boxes
+  const kpis = [
+    { label: 'Revenue Growth', value: '+18%',  color: '#34C759' },
+    { label: 'Op. Margin',     value: '24.3%', color: '#007AFF' },
+    { label: 'CSAT Score',     value: '4.7/5', color: '#FF9500' },
+    { label: 'Churn Rate',     value: '2.1%',  color: '#5856D6' },
+  ];
+  kpis.forEach((k, i) => {
+    const x = 26 + i * 185, y = 285;
+    ctx.fillStyle = '#f8f9fa';
+    roundRect(ctx, x, y, 170, 70, 8); ctx.fill();
+    ctx.fillStyle = k.color;
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText(k.value, x + 12, y + 38);
+    ctx.fillStyle = '#636366';
+    ctx.font = '11px Arial';
+    ctx.fillText(k.label, x + 12, y + 56);
+  });
+
+  ctx.fillStyle = '#1c1c1e';
+  ctx.font = 'bold 16px Arial';
+  ctx.fillText('2. Product Updates', 26, 400);
+
+  ctx.font = '13px Arial';
+  ctx.fillStyle = '#3a3a3c';
+  wrapText(ctx, 'The annotation module (Phase 1) shipped on October 14th — two weeks ahead of schedule. User research confirmed that the toolbar-first design reduces time-to-first-annotation by 40% compared to the legacy interface. Phase 2 (server-side PDF embedding) is planned for Q4.', 26, 425, DOC_W - 52, 20);
+
+  // Table
+  ctx.fillStyle = '#1c1c1e';
+  ctx.font = 'bold 16px Arial';
+  ctx.fillText('3. Delivery Timeline', 26, 530);
+
+  const rows = [
+    ['Feature', 'Team', 'Status', 'Due Date'],
+    ['Annotation Library Phase 1', 'Platform', '✅ Complete', 'Oct 14'],
+    ['Mobile Responsive Refactor',  'Frontend', '✅ Complete', 'Sep 30'],
+    ['PDF Export (server-side)',     'Backend',  '🔄 In Progress', 'Nov 28'],
+    ['Real-time Collaboration',     'Platform', '📋 Planned', 'Q1 2027'],
+    ['Customer Onboarding Flow',    'Design',   '⏸ On Hold',    'TBD'],
+  ];
+  rows.forEach((row, ri) => {
+    const y = 560 + ri * 38;
+    const cols = [26, 280, 430, 590];
+    ctx.fillStyle = ri === 0 ? '#f2f2f7' : (ri % 2 ? '#fff' : '#fafafa');
+    ctx.fillRect(26, y, DOC_W - 52, 36);
+    ctx.fillStyle = ri === 0 ? '#636366' : '#1c1c1e';
+    ctx.font = ri === 0 ? 'bold 12px Arial' : '12px Arial';
+    row.forEach((cell, ci) => ctx.fillText(cell, cols[ci] + 8, y + 23));
+    ctx.fillStyle = '#e5e5ea';
+    ctx.fillRect(26, y, DOC_W - 52, 1);
+  });
+
+  ctx.fillStyle = '#1c1c1e';
+  ctx.font = 'bold 16px Arial';
+  ctx.fillText('4. Financial Overview', 26, 800);
+
+  ctx.font = '13px Arial';
+  ctx.fillStyle = '#3a3a3c';
+  wrapText(ctx, 'Total Q3 revenue reached $24.7M, exceeding the $22M target by 12%. Cloud infrastructure costs were reduced by $340K following the migration completed in August. The R&D budget utilisation stands at 87%, with the remaining 13% earmarked for Q4 initiatives.', 26, 825, DOC_W - 52, 20);
+
+  // Bar chart (simple)
+  const bars = [{ label: 'Q1', val: 18.2 }, { label: 'Q2', val: 21.5 }, { label: 'Q3', val: 24.7 }, { label: 'Q4 Target', val: 27.0 }];
+  const maxVal = 30, chartH = 100, chartY = 910, chartX = 26;
+  ctx.fillStyle = '#f8f9fa';
+  ctx.fillRect(chartX, chartY, DOC_W - 52, chartH + 30);
+  bars.forEach((b, i) => {
+    const bh = (b.val / maxVal) * chartH;
+    const bx = chartX + 20 + i * 180;
+    ctx.fillStyle = i === 3 ? '#c7c7cc' : '#007AFF';
+    ctx.fillRect(bx, chartY + chartH - bh + 5, 130, bh);
+    ctx.fillStyle = '#1c1c1e';
+    ctx.font = 'bold 12px Arial';
+    ctx.fillText('$' + b.val + 'M', bx + 5, chartY + chartH - bh);
+    ctx.font = '11px Arial';
+    ctx.fillStyle = '#636366';
+    ctx.fillText(b.label, bx + 30, chartY + chartH + 20);
+  });
+
+  // Footer
+  ctx.fillStyle = '#e5e5ea';
+  ctx.fillRect(0, DOC_H - 36, DOC_W, 1);
+  ctx.fillStyle = '#8e8e93';
+  ctx.font = '11px Arial';
+  ctx.fillText('CONFIDENTIAL – For internal review only · Page 1 of 1 · Generated 14 Oct 2026', 26, DOC_H - 14);
+
+  ctx.restore();
+}
+
+function wrapText(ctx, text, x, y, maxW, lh) {
+  const words = text.split(' '); let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW) { ctx.fillText(line, x, y); line = w; y += lh; }
+    else line = test;
+  }
+  if (line) ctx.fillText(line, x, y);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Coordinate conversion ─────────────────────────────────────────────────
+function screenToDoc(sx, sy) {
+  const rect = cvOv.getBoundingClientRect();
+  return { x: (sx - rect.left) / zoom, y: (sy - rect.top) / zoom };
+}
+
+function docToScreen(dx, dy) {
+  const rect = cvOv.getBoundingClientRect();
+  return { x: dx * zoom + rect.left, y: dy * zoom + rect.top };
+}
+
+function s(dx) { return dx * zoom; }  // scale doc → screen (relative)
+
+// ─── Geometry helpers ──────────────────────────────────────────────────────
+function ptDist(a, b) { const dx = a.x-b.x, dy = a.y-b.y; return Math.sqrt(dx*dx+dy*dy); }
+function segDistSq(p, a, b) {
+  const dx = b.x-a.x, dy = b.y-a.y, len2 = dx*dx+dy*dy;
+  if (!len2) { return (p.x-a.x)**2 + (p.y-a.y)**2; }
+  const t = Math.max(0, Math.min(1, ((p.x-a.x)*dx+(p.y-a.y)*dy)/len2));
+  return (p.x-a.x-t*dx)**2 + (p.y-a.y-t*dy)**2;
+}
+function boundsOf(pts) {
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for (const p of pts) { minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y); }
+  return { x:minX, y:minY, width:maxX-minX, height:maxY-minY };
+}
+function simplify(pts, tol) {
+  if (pts.length <= 2) return pts;
+  const tolSq = tol*tol;
+  function seg(pts, s, e, res) {
+    let maxD=0,idx=0;
+    for (let i=s+1;i<e;i++) { const d=segDistSq(pts[i],pts[s],pts[e]); if(d>maxD){maxD=d;idx=i;} }
+    if (maxD > tolSq) { seg(pts,s,idx,res); res.push(pts[idx]); seg(pts,idx,e,res); }
+    else res.push(pts[s]);
+  }
+  const res=[]; seg(pts,0,pts.length-1,res); res.push(pts[pts.length-1]); return res;
+}
+
+// ─── Hit testing ───────────────────────────────────────────────────────────
+function hitAnnotation(p, a, tol=8/zoom) {
+  const g = a.geometry;
+  if (g.kind === 'rect') {
+    return p.x >= g.rect.x-tol && p.x <= g.rect.x+g.rect.width+tol &&
+           p.y >= g.rect.y-tol && p.y <= g.rect.y+g.rect.height+tol;
+  }
+  if (g.kind === 'path') {
+    for (let i=0;i<g.points.length-1;i++) {
+      if (Math.sqrt(segDistSq(p,g.points[i],g.points[i+1])) <= tol+(a.style.strokeWidth||2)/2) return true;
+    }
+    return false;
+  }
+  if (g.kind === 'point') return ptDist(p, g.point) <= tol+14;
+  if (g.kind === 'line') return Math.sqrt(segDistSq(p,g.startPoint,g.endPoint)) <= tol+(a.style.strokeWidth||2)/2;
+  return false;
+}
+
+function getAnnotBounds(a) {
+  const g = a.geometry;
+  if (g.kind === 'rect') return g.rect;
+  if (g.kind === 'path') return g.bounds;
+  if (g.kind === 'line') { const x=Math.min(g.startPoint.x,g.endPoint.x),y=Math.min(g.startPoint.y,g.endPoint.y); return {x,y,width:Math.abs(g.endPoint.x-g.startPoint.x),height:Math.abs(g.endPoint.y-g.startPoint.y)}; }
+  if (g.kind === 'point') return {x:g.point.x-16,y:g.point.y-32,width:32,height:36};
+  return null;
+}
+
+function selectionBounds(ids) {
+  const as = [...ids].map(id=>annotations.find(a=>a.id===id)).filter(Boolean);
+  if (!as.length) return null;
+  const bounds = as.map(getAnnotBounds).filter(Boolean);
+  if (!bounds.length) return null;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for (const b of bounds) { minX=Math.min(minX,b.x);minY=Math.min(minY,b.y);maxX=Math.max(maxX,b.x+b.width);maxY=Math.max(maxY,b.y+b.height); }
+  return {x:minX,y:minY,width:maxX-minX,height:maxY-minY};
+}
+
+function handles(rect) {
+  const {x,y,width:w,height:h} = rect, cx=x+w/2, cy=y+h/2;
+  return [{x,y},{x:cx,y},{x:x+w,y},{x:x+w,y:cy},{x:x+w,y:y+h},{x:cx,y:y+h},{x,y:y+h},{x,y:cy}];
+}
+
+function hitHandle(p, rect) {
+  const hs = handles(rect); const tol = HANDLE_R/zoom;
+  for (let i=0;i<hs.length;i++) if (ptDist(p,hs[i]) <= tol) return i;
+  return -1;
+}
+
+// ─── Rendering ─────────────────────────────────────────────────────────────
+const HANDLE_CURSORS = ['nwse-resize','ns-resize','nesw-resize','ew-resize','nwse-resize','ns-resize','nesw-resize','ew-resize'];
+
+function applyStyle(ctx, a) {
+  ctx.globalAlpha = a.style.opacity ?? 1;
+  ctx.strokeStyle = a.style.strokeColor ?? '#000';
+  ctx.fillStyle   = a.style.fillColor   ?? 'transparent';
+  ctx.lineWidth   = (a.style.strokeWidth ?? 2) * zoom;
+  ctx.setLineDash([]);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+}
+
+function paintAnnotation(ctx, a) {
+  const g = a.geometry;
+  ctx.save(); applyStyle(ctx, a);
+  switch (a.type) {
+    case 'highlight': {
+      const {x,y,width:w,height:h} = g.rect;
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = a.style.fillColor;
+      ctx.fillRect(s(x),s(y),s(w),s(h));
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+    }
+    case 'rectangle': {
+      const {x,y,width:w,height:h} = g.rect;
+      ctx.fillRect(s(x),s(y),s(w),s(h));
+      if (a.style.strokeWidth > 0) ctx.strokeRect(s(x),s(y),s(w),s(h));
+      break;
+    }
+    case 'ellipse': {
+      const {x,y,width:w,height:h} = g.rect;
+      ctx.beginPath();
+      ctx.ellipse(s(x)+s(w)/2,s(y)+s(h)/2,Math.max(s(w)/2,1),Math.max(s(h)/2,1),0,0,Math.PI*2);
+      ctx.fill(); if (a.style.strokeWidth > 0) ctx.stroke();
+      break;
+    }
+    case 'freehand': {
+      const pts = g.points;
+      if (pts.length < 2) break;
+      ctx.beginPath(); ctx.moveTo(s(pts[0].x),s(pts[0].y));
+      for (let i=1;i<pts.length;i++) ctx.lineTo(s(pts[i].x),s(pts[i].y));
+      ctx.stroke();
+      break;
+    }
+    case 'text': {
+      const {x,y,width:w,height:h} = g.rect;
+      ctx.fillRect(s(x),s(y),s(w),s(h));
+      if (a.style.strokeWidth > 0) ctx.strokeRect(s(x),s(y),s(w),s(h));
+      if (a.meta.text) {
+        const sz = (a.style.fontSize||14)*zoom;
+        ctx.font = `${sz}px ${a.style.fontFamily||'Arial,sans-serif'}`;
+        ctx.fillStyle = a.style.fontColor||'#000';
+        ctx.globalAlpha = a.style.opacity??1;
+        const lh = sz*1.3, pad = 4*zoom, mw = s(w)-pad*2;
+        const lines = wrapTextLines(ctx, a.meta.text, mw);
+        for (let i=0;i<lines.length;i++) {
+          const ly = s(y)+pad+(i+1)*lh;
+          if (ly > s(y)+s(h)) break;
+          ctx.fillText(lines[i], s(x)+pad, ly, mw);
+        }
+      }
+      break;
+    }
+    case 'comment': {
+      const {x,y} = g.point;
+      const sz = 14;
+      ctx.beginPath();
+      ctx.arc(s(x),s(y)-s(sz)/2,s(sz)/2*zoom,0,Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(s(x)-3*zoom,s(y)-4*zoom);
+      ctx.lineTo(s(x),s(y)+2*zoom);
+      ctx.lineTo(s(x)+3*zoom,s(y)-4*zoom);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(s(x),s(y)-s(sz)/2*zoom,s(sz)*0.15*zoom,0,Math.PI*2);
+      ctx.fill();
+      break;
+    }
+    case 'line':
+    case 'arrow': {
+      ctx.beginPath();
+      ctx.moveTo(s(g.startPoint.x),s(g.startPoint.y));
+      ctx.lineTo(s(g.endPoint.x),s(g.endPoint.y));
+      ctx.stroke();
+      if (a.type === 'arrow' || g.hasArrowHead) {
+        drawArrowHead(ctx, g.startPoint, g.endPoint, a.style.strokeColor);
+      }
+      break;
+    }
+  }
+  ctx.restore();
+}
+
+function drawArrowHead(ctx, from, to, color) {
+  const angle = Math.atan2((to.y-from.y)*zoom,(to.x-from.x)*zoom);
+  const hl = 14; const ha = Math.PI/6;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(s(to.x),s(to.y));
+  ctx.lineTo(s(to.x)-hl*Math.cos(angle-ha),s(to.y)-hl*Math.sin(angle-ha));
+  ctx.lineTo(s(to.x)-hl*Math.cos(angle+ha),s(to.y)-hl*Math.sin(angle+ha));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function wrapTextLines(ctx, text, maxW) {
+  const lines = [];
+  for (const para of text.split('\n')) {
+    const words = para.split(' '); let line = '';
+    for (const w of words) {
+      const test = line ? line+' '+w : w;
+      if (ctx.measureText(test).width > maxW) { if (line) lines.push(line); line = w; }
+      else line = test;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+// ─── Layer painters ────────────────────────────────────────────────────────
+function renderBase() {
+  ctxBase.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  for (const a of annotations) {
+    if (!selectedIds.has(a.id)) paintAnnotation(ctxBase, a);
+  }
+}
+
+function renderSel() {
+  ctxSel.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  for (const id of selectedIds) {
+    const a = annotations.find(x=>x.id===id);
+    if (a) paintAnnotation(ctxSel, a);
+  }
+  if (selectedIds.size > 0) {
+    const bounds = selectionBounds(selectedIds);
+    if (bounds) {
+      // Dashed border
+      ctxSel.save();
+      ctxSel.strokeStyle='#0066FF'; ctxSel.lineWidth=1.5; ctxSel.setLineDash([5,3]);
+      ctxSel.strokeRect(s(bounds.x)-1,s(bounds.y)-1,s(bounds.width)+2,s(bounds.height)+2);
+      // Handles
+      ctxSel.setLineDash([]);
+      for (const h of handles(bounds)) {
+        ctxSel.fillStyle='#fff'; ctxSel.strokeStyle='#0066FF'; ctxSel.lineWidth=1.5;
+        ctxSel.beginPath();
+        ctxSel.rect(s(h.x)-HANDLE_R,s(h.y)-HANDLE_R,HANDLE_R*2,HANDLE_R*2);
+        ctxSel.fill(); ctxSel.stroke();
+      }
+      ctxSel.restore();
+    }
+  }
+}
+
+function renderAll() {
+  if (baseDirty) { renderBase(); baseDirty=false; }
+  if (selDirty)  { renderSel();  selDirty=false; }
+}
+
+// RAF overlay loop
+function rafLoop() {
+  renderAll();
+  requestAnimationFrame(rafLoop);
+}
+requestAnimationFrame(rafLoop);
+
+// ─── Pointer (tool) handler ────────────────────────────────────────────────
+let pointerDown = false, pointerId = null;
+let startDoc = null, lastDoc = null;
+let inProgressPts = [];
+let dragMode = null;   // 'move' | 'resize' | 'lasso'
+let activeHandleIdx = -1;
+let lassoRect = null;
+let resizeOrigBounds = null, resizeOrigAnnots = new Map();
+
+const overlay = document.getElementById('canvas-ov');
+
+overlay.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  if (pointerId !== null) return;
+  pointerId = e.pointerId;
+  pointerDown = true;
+  overlay.setPointerCapture(e.pointerId);
+  const p = getDocPt(e);
+  startDoc = lastDoc = p;
+  dispatchToolDown(p, e);
+});
+
+overlay.addEventListener('pointermove', e => {
+  if (e.pointerId !== pointerId) return;
+  const p = getDocPt(e);
+  dispatchToolMove(p, e);
+  lastDoc = p;
+});
+
+overlay.addEventListener('pointerup', e => {
+  if (e.pointerId !== pointerId) return;
+  const p = getDocPt(e);
+  dispatchToolUp(p, e);
+  pointerDown = false; pointerId = null; startDoc = null; lastDoc = null;
+});
+
+overlay.addEventListener('dblclick', e => {
+  const p = getDocPt(e);
+  if (activeTool === 'select' || activeTool === 'text') {
+    // Edit existing text annotation
+    const hit = [...annotations].reverse().find(a => hitAnnotation(p, a));
+    if (hit && (hit.type === 'text')) {
+      openTextEditor(hit);
+    }
+  }
+});
+
+function getDocPt(e) {
+  const rect = overlay.getBoundingClientRect();
+  return { x: (e.clientX-rect.left)/zoom, y: (e.clientY-rect.top)/zoom };
+}
+
+// ─── Tool dispatch ─────────────────────────────────────────────────────────
+function dispatchToolDown(p, e) {
+  switch (activeTool) {
+    case 'select': onSelectDown(p, e); break;
+    case 'highlight': case 'rectangle': case 'ellipse': case 'arrow': case 'line': onShapeDown(p); break;
+    case 'freehand': onFreehandDown(p); break;
+    case 'text': onTextDown(p); break;
+    case 'comment': onCommentDown(p); break;
+    case 'eraser': onEraserDown(p); break;
+  }
+}
+
+function dispatchToolMove(p, e) {
+  switch (activeTool) {
+    case 'select': onSelectMove(p, e); break;
+    case 'highlight': case 'rectangle': case 'ellipse': case 'arrow': case 'line': onShapeMove(p); break;
+    case 'freehand': onFreehandMove(p); break;
+    case 'text': onShapeMove(p); break; // preview text box
+    case 'eraser': onEraserMove(p); break;
+    default: break;
+  }
+  updateCursorForTool(p);
+}
+
+function dispatchToolUp(p, e) {
+  switch (activeTool) {
+    case 'select': onSelectUp(p, e); break;
+    case 'highlight': case 'rectangle': case 'ellipse': case 'arrow': case 'line': onShapeUp(p); break;
+    case 'freehand': onFreehandUp(p); break;
+    case 'text': onTextUp(p); break;
+    case 'eraser': onEraserUp(p); break;
+    default: break;
+  }
+}
+
+// ─── Select tool ──────────────────────────────────────────────────────────
+let moveSnap = new Map(); // id -> original geometry snapshot
+
+function onSelectDown(p, e) {
+  const selBounds = selectionBounds(selectedIds);
+  // 1. Try handle
+  if (selBounds && selectedIds.size > 0) {
+    const hi = hitHandle(p, selBounds);
+    if (hi >= 0) {
+      dragMode = 'resize';
+      activeHandleIdx = hi;
+      resizeOrigBounds = structuredClone(selBounds);
+      resizeOrigAnnots.clear();
+      for (const id of selectedIds) {
+        const a = annotations.find(x=>x.id===id);
+        if (a) resizeOrigAnnots.set(id, structuredClone(a.geometry));
+      }
+      return;
+    }
+  }
+  // 2. Try annotation hit
+  const hit = [...annotations].reverse().find(a => hitAnnotation(p, a));
+  if (hit) {
+    if (e.shiftKey) {
+      const ns = new Set(selectedIds);
+      ns.has(hit.id) ? ns.delete(hit.id) : ns.add(hit.id);
+      setSelection(ns);
+    } else {
+      if (!selectedIds.has(hit.id)) setSelection(new Set([hit.id]));
+    }
+    dragMode = 'move';
+    moveSnap.clear();
+    for (const id of selectedIds) {
+      const a = annotations.find(x=>x.id===id);
+      if (a) moveSnap.set(id, structuredClone(a.geometry));
+    }
+    return;
+  }
+  // 3. Lasso
+  if (!e.shiftKey) setSelection(new Set());
+  dragMode = 'lasso';
+  lassoRect = { x: p.x, y: p.y, width: 0, height: 0 };
+}
+
+function onSelectMove(p, e) {
+  if (!pointerDown) return;
+  if (dragMode === 'move') {
+    const dx = p.x - lastDoc.x, dy = p.y - lastDoc.y;
+    for (const id of selectedIds) {
+      const a = annotations.find(x=>x.id===id);
+      if (!a) continue;
+      translateAnnotGeometry(a, dx, dy);
+    }
+    baseDirty = selDirty = true;
+  } else if (dragMode === 'resize') {
+    doResize(p);
+    baseDirty = selDirty = true;
+  } else if (dragMode === 'lasso') {
+    lassoRect = {
+      x: Math.min(startDoc.x, p.x), y: Math.min(startDoc.y, p.y),
+      width: Math.abs(p.x-startDoc.x), height: Math.abs(p.y-startDoc.y),
+    };
+    paintLasso();
+  }
+}
+
+function onSelectUp(p, e) {
+  if (dragMode === 'move') {
+    // Commit move as undo-able command (snapshot already applied live)
+    const before = new Map(moveSnap);
+    const afterGeoms = new Map([...selectedIds].map(id => [id, structuredClone(annotations.find(x=>x.id===id)?.geometry)]));
+    const affected = [...selectedIds].map(id=>annotations.find(x=>x.id===id)).filter(Boolean).map(a=>structuredClone(a));
+    pushUndo({
+      execute() {},  // already applied
+      undo() {
+        for (const [id, g] of before) {
+          const a = annotations.find(x=>x.id===id);
+          if (a) a.geometry = structuredClone(g);
+        }
+        baseDirty = selDirty = true;
+      },
+    });
+  } else if (dragMode === 'resize') {
+    pushUndo({
+      execute() {},
+      undo() {
+        for (const [id, g] of resizeOrigAnnots) {
+          const a = annotations.find(x=>x.id===id);
+          if (a) a.geometry = structuredClone(g);
+        }
+        baseDirty = selDirty = true;
+      },
+    });
+  } else if (dragMode === 'lasso' && lassoRect) {
+    const hits = annotations.filter(a => {
+      const b = getAnnotBounds(a);
+      return b && b.x < lassoRect.x+lassoRect.width && b.x+b.width > lassoRect.x &&
+             b.y < lassoRect.y+lassoRect.height && b.y+b.height > lassoRect.y;
+    });
+    const ns = new Set([...selectedIds, ...hits.map(a=>a.id)]);
+    setSelection(ns);
+    lassoRect = null;
+    ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  }
+  dragMode = null;
+  syncDelete();
+}
+
+function translateAnnotGeometry(a, dx, dy) {
+  const g = a.geometry;
+  if (g.kind==='rect') { g.rect.x+=dx; g.rect.y+=dy; }
+  else if (g.kind==='path') { g.points.forEach(p=>{p.x+=dx;p.y+=dy;}); g.bounds.x+=dx; g.bounds.y+=dy; }
+  else if (g.kind==='point') { g.point.x+=dx; g.point.y+=dy; }
+  else if (g.kind==='line') { g.startPoint.x+=dx; g.startPoint.y+=dy; g.endPoint.x+=dx; g.endPoint.y+=dy; }
+}
+
+function doResize(p) {
+  if (!resizeOrigBounds || selectedIds.size !== 1) return;
+  const id = [...selectedIds][0];
+  const a = annotations.find(x=>x.id===id);
+  if (!a || a.geometry.kind !== 'rect') return;
+  const ob = resizeOrigBounds;
+  let {x, y, width: w, height: h} = ob;
+  const dx = p.x - startDoc.x, dy = p.y - startDoc.y;
+  const hi = activeHandleIdx;
+  if (hi===0){x+=dx;y+=dy;w-=dx;h-=dy;} else if(hi===1){y+=dy;h-=dy;} else if(hi===2){y+=dy;w+=dx;h-=dy;}
+  else if(hi===3){w+=dx;} else if(hi===4){w+=dx;h+=dy;} else if(hi===5){h+=dy;}
+  else if(hi===6){x+=dx;w-=dx;h+=dy;} else if(hi===7){x+=dx;w-=dx;}
+  if (w<4)w=4; if(h<4)h=4;
+  a.geometry.rect = {x,y,width:w,height:h};
+}
+
+function paintLasso() {
+  if (!lassoRect) return;
+  ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  ctxOv.save();
+  ctxOv.strokeStyle='#0066FF'; ctxOv.lineWidth=1; ctxOv.setLineDash([5,3]);
+  ctxOv.fillStyle='rgba(0,102,255,0.05)';
+  ctxOv.fillRect(s(lassoRect.x),s(lassoRect.y),s(lassoRect.width),s(lassoRect.height));
+  ctxOv.strokeRect(s(lassoRect.x),s(lassoRect.y),s(lassoRect.width),s(lassoRect.height));
+  ctxOv.restore();
+}
+
+// ─── Shape tools ───────────────────────────────────────────────────────────
+function onShapeDown(p) { /* nothing */ }
+
+function onShapeMove(p) {
+  if (!pointerDown || !startDoc) return;
+  ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  const sp = startDoc, ep = p;
+  ctxOv.save();
+  ctxOv.globalAlpha = activeStyle.opacity;
+  ctxOv.strokeStyle = activeStyle.strokeColor;
+  ctxOv.fillStyle   = activeStyle.fillColor;
+  ctxOv.lineWidth   = activeStyle.strokeWidth * zoom;
+  ctxOv.lineJoin = 'round'; ctxOv.lineCap = 'round';
+  ctxOv.setLineDash([]);
+
+  const rx=Math.min(s(sp.x),s(ep.x)), ry=Math.min(s(sp.y),s(ep.y));
+  const rw=Math.abs(s(ep.x-sp.x)), rh=Math.abs(s(ep.y-sp.y));
+
+  switch (activeTool) {
+    case 'highlight':
+      ctxOv.globalCompositeOperation='multiply';
+      ctxOv.fillStyle='rgba(255,204,0,0.45)';
+      ctxOv.fillRect(rx,ry,rw,rh);
+      ctxOv.globalCompositeOperation='source-over';
+      break;
+    case 'rectangle':
+      ctxOv.fillRect(rx,ry,rw,rh);
+      ctxOv.strokeRect(rx,ry,rw,rh);
+      break;
+    case 'ellipse':
+      ctxOv.beginPath();
+      ctxOv.ellipse(rx+rw/2,ry+rh/2,Math.max(rw/2,1),Math.max(rh/2,1),0,0,Math.PI*2);
+      ctxOv.fill(); ctxOv.stroke();
+      break;
+    case 'arrow': case 'line': {
+      ctxOv.beginPath();
+      ctxOv.moveTo(s(sp.x),s(sp.y));
+      ctxOv.lineTo(s(ep.x),s(ep.y));
+      ctxOv.stroke();
+      if (activeTool==='arrow') drawArrowHead(ctxOv,sp,ep,activeStyle.strokeColor);
+      break;
+    }
+    case 'text': {
+      ctxOv.strokeStyle='#007AFF'; ctxOv.lineWidth=1; ctxOv.setLineDash([4,3]);
+      ctxOv.strokeRect(rx,ry,rw||160*zoom,rh||40*zoom);
+      break;
+    }
+  }
+  ctxOv.restore();
+}
+
+function onShapeUp(p) {
+  ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  if (!startDoc) return;
+  const sp = startDoc, ep = p;
+  const dx = Math.abs(ep.x-sp.x), dy = Math.abs(ep.y-sp.y);
+  if (dx<3 && dy<3 && activeTool!=='comment') return;
+
+  const now = new Date().toISOString();
+  let geometry;
+  switch (activeTool) {
+    case 'highlight': case 'rectangle': case 'ellipse':
+      geometry = { kind:'rect', rect:{ x:Math.min(sp.x,ep.x), y:Math.min(sp.y,ep.y), width:Math.abs(ep.x-sp.x)||4, height:Math.abs(ep.y-sp.y)||4 } };
+      break;
+    case 'arrow':
+      geometry = { kind:'line', startPoint:{...sp}, endPoint:{...ep}, hasArrowHead:true, hasArrowTail:false };
+      break;
+    case 'line':
+      geometry = { kind:'line', startPoint:{...sp}, endPoint:{...ep}, hasArrowHead:false, hasArrowTail:false };
+      break;
+    default: return;
+  }
+  const style = activeTool==='highlight'
+    ? { strokeColor:'rgba(255,204,0,0)', fillColor:'rgba(255,204,0,0.45)', opacity:1, strokeWidth:0 }
+    : { ...activeStyle };
+
+  const a = makeAnnotation(activeTool, style, geometry);
+  execCmd(addCmd(a));
+  setSelection(new Set([a.id]));
+  baseDirty = selDirty = true;
+}
+
+// ─── Freehand ──────────────────────────────────────────────────────────────
+function onFreehandDown(p) { inProgressPts = [p]; }
+function onFreehandMove(p) {
+  if (!pointerDown) return;
+  const last = inProgressPts[inProgressPts.length-1];
+  if ((p.x-last.x)**2+(p.y-last.y)**2 > 1) {
+    inProgressPts.push(p);
+    ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+    ctxOv.save();
+    ctxOv.strokeStyle = activeStyle.strokeColor;
+    ctxOv.lineWidth   = activeStyle.strokeWidth * zoom;
+    ctxOv.globalAlpha = activeStyle.opacity;
+    ctxOv.lineCap = 'round'; ctxOv.lineJoin = 'round'; ctxOv.setLineDash([]);
+    ctxOv.beginPath();
+    ctxOv.moveTo(s(inProgressPts[0].x),s(inProgressPts[0].y));
+    for (let i=1;i<inProgressPts.length;i++) ctxOv.lineTo(s(inProgressPts[i].x),s(inProgressPts[i].y));
+    ctxOv.stroke();
+    ctxOv.restore();
+  }
+}
+function onFreehandUp(p) {
+  ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  if (inProgressPts.length < 2) { inProgressPts=[]; return; }
+  const pts = simplify(inProgressPts, 1.5);
+  const bounds = boundsOf(pts);
+  const geometry = { kind:'path', points:pts, closed:false, bounds };
+  const style = { ...activeStyle, fillColor:'transparent' };
+  const a = makeAnnotation('freehand', style, geometry);
+  execCmd(addCmd(a));
+  setSelection(new Set([a.id]));
+  inProgressPts = []; baseDirty = true;
+}
+
+// ─── Text tool ─────────────────────────────────────────────────────────────
+function onTextDown(p) { /* preview in onShapeMove */ }
+function onTextUp(p) {
+  ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  if (!startDoc) return;
+  const sp = startDoc;
+  const dx = Math.abs(p.x-sp.x), dy = Math.abs(p.y-sp.y);
+  const rect = dx>8||dy>8
+    ? { x:Math.min(sp.x,p.x), y:Math.min(sp.y,p.y), width:Math.max(dx,40), height:Math.max(dy,20) }
+    : { x:sp.x, y:sp.y, width:160, height:40 };
+
+  const style = { ...activeStyle, fillColor:'rgba(255,255,255,0.85)', strokeColor:'#007AFF', strokeWidth:1, fontSize:14, fontFamily:'Arial,sans-serif', fontColor:'#1c1c1e' };
+  const a = makeAnnotation('text', style, { kind:'rect', rect });
+  execCmd(addCmd(a));
+  setSelection(new Set([a.id]));
+  baseDirty = selDirty = true;
+  openTextEditor(a);
+}
+
+// ─── Comment tool ──────────────────────────────────────────────────────────
+function onCommentDown(p) {}
+function onCommentUp(p) {
+  if (!startDoc) return;
+  const style = { strokeColor:'#FF9500', fillColor:'#FF9500', opacity:1, strokeWidth:0 };
+  const a = makeAnnotation('comment', style, { kind:'point', point:{...p} });
+  const text = prompt('Comment text (optional):') || '';
+  a.meta.text = text;
+  execCmd(addCmd(a));
+  setSelection(new Set([a.id]));
+  baseDirty = true;
+}
+
+// ─── Eraser ────────────────────────────────────────────────────────────────
+let erasedSet = new Set(), erasedSnapshots = new Map();
+const ERASE_R = 12;
+
+function onEraserDown(p) { erasedSet.clear(); erasedSnapshots.clear(); eraseAt(p); }
+function onEraserMove(p) { if (pointerDown) eraseAt(p); paintEraserCursor(p); }
+function onEraserUp(p) {
+  if (erasedSet.size === 0) return;
+  const snaps = new Map(erasedSnapshots);
+  pushUndo({
+    execute() { for (const id of snaps.keys()) { annotations = annotations.filter(a=>a.id!==id); } baseDirty=true; updatePanel(); },
+    undo()    { for (const a of snaps.values()) annotations.push(a); baseDirty=true; updatePanel(); },
+  });
+  erasedSet.clear(); erasedSnapshots.clear();
+  ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+}
+function eraseAt(p) {
+  const tol = ERASE_R/zoom;
+  const toRemove = annotations.filter(a => !erasedSet.has(a.id) && hitAnnotation(p,a,tol));
+  for (const a of toRemove) {
+    erasedSet.add(a.id);
+    erasedSnapshots.set(a.id, structuredClone(a));
+    annotations = annotations.filter(x=>x.id!==a.id);
+  }
+  if (toRemove.length) { baseDirty=true; updatePanel(); }
+}
+function paintEraserCursor(p) {
+  ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+  ctxOv.save();
+  ctxOv.strokeStyle='#555'; ctxOv.lineWidth=2; ctxOv.setLineDash([]);
+  ctxOv.beginPath();
+  ctxOv.arc(s(p.x),s(p.y),ERASE_R,0,Math.PI*2);
+  ctxOv.stroke();
+  ctxOv.restore();
+}
+
+// ─── Text editor ───────────────────────────────────────────────────────────
+const textEditorEl = document.getElementById('text-editor');
+let editingId = null;
+
+function openTextEditor(a) {
+  if (a.geometry.kind !== 'rect') return;
+  editingId = a.id;
+  const r = a.geometry.rect;
+  const sz = (a.style.fontSize||14)*zoom;
+  const wrapper = document.getElementById('doc-wrapper');
+  textEditorEl.style.display = 'block';
+  textEditorEl.style.left   = s(r.x)+'px';
+  textEditorEl.style.top    = s(r.y)+'px';
+  textEditorEl.style.width  = Math.max(s(r.width),60)+'px';
+  textEditorEl.style.height = Math.max(s(r.height),24)+'px';
+  textEditorEl.style.fontSize = sz+'px';
+  textEditorEl.value = a.meta.text || '';
+  textEditorEl.focus();
+  textEditorEl.select();
+}
+
+textEditorEl.addEventListener('blur', () => commitTextEdit());
+textEditorEl.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { textEditorEl.style.display='none'; editingId=null; }
+  if (e.key === 'Enter' && e.ctrlKey) commitTextEdit();
+  e.stopPropagation();
+});
+
+function commitTextEdit() {
+  if (!editingId) return;
+  const text = textEditorEl.value
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const cmd = updateCmd(editingId, { meta:{ text } });
+  execCmd(cmd);
+  textEditorEl.style.display = 'none';
+  editingId = null;
+  baseDirty = selDirty = true;
+  updatePanel();
+}
+
+// ─── Cursor management ─────────────────────────────────────────────────────
+function updateCursorForTool(p) {
+  const cursors = {
+    select:'default', highlight:'crosshair', freehand:'crosshair',
+    text:'text', comment:'cell', rectangle:'crosshair', ellipse:'crosshair',
+    arrow:'crosshair', line:'crosshair', eraser:'none',
+  };
+  let cur = cursors[activeTool] || 'default';
+  if (activeTool === 'select' && selectedIds.size > 0) {
+    const bounds = selectionBounds(selectedIds);
+    if (bounds) {
+      const hi = hitHandle(p, bounds);
+      if (hi >= 0) { cur = HANDLE_CURSORS[hi]; }
+      else {
+        const hit = [...annotations].reverse().find(a => selectedIds.has(a.id) && hitAnnotation(p,a));
+        if (hit) cur = 'move';
+      }
+    }
+  }
+  overlay.style.cursor = cur;
+}
+
+// ─── Annotation factory ────────────────────────────────────────────────────
+function makeAnnotation(type, style, geometry) {
+  const now = new Date().toISOString();
+  return { schemaVersion:SCHEMA_VERSION, id:uid(), docId:DOC_ID, pageIndex:0, type, author:AUTHOR, createdAt:now, updatedAt:now, style, geometry, meta:{}, isLocked:false };
+}
+
+// ─── Selection management ──────────────────────────────────────────────────
+function setSelection(ids) {
+  selectedIds = new Set(ids);
+  selDirty = true;
+  syncDelete();
+  highlightPanel();
+}
+
+function syncDelete() {
+  document.getElementById('btn-delete').disabled = selectedIds.size === 0;
+}
+
+// ─── Keyboard shortcuts ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
+  const ctrl = e.ctrlKey || e.metaKey;
+
+  if (ctrl && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+  if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+  if (ctrl && e.key === 'a') { e.preventDefault(); setSelection(new Set(annotations.map(a=>a.id))); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !ctrl) {
+    e.preventDefault();
+    if (selectedIds.size > 0) { execCmd(removeCmd([...selectedIds])); baseDirty=selDirty=true; }
+    return;
+  }
+  if (e.key === 'Escape') { setSelection(new Set()); selectTool('select'); return; }
+
+  const toolKeys = {v:'select',h:'highlight',d:'freehand',p:'freehand',t:'text',c:'comment',r:'rectangle',e:'ellipse',a:'arrow',l:'line',x:'eraser'};
+  if (!ctrl && !e.altKey && toolKeys[e.key.toLowerCase()]) {
+    selectTool(toolKeys[e.key.toLowerCase()]); return;
+  }
+
+  // Arrow nudge
+  const NUDGE = e.shiftKey ? 10 : 1;
+  let dx=0,dy=0;
+  if (e.key==='ArrowLeft'){dx=-NUDGE;e.preventDefault();}
+  if (e.key==='ArrowRight'){dx=NUDGE;e.preventDefault();}
+  if (e.key==='ArrowUp'){dy=-NUDGE;e.preventDefault();}
+  if (e.key==='ArrowDown'){dy=NUDGE;e.preventDefault();}
+  if ((dx||dy) && selectedIds.size > 0) {
+    const snapBefore = new Map([...selectedIds].map(id=>[id,structuredClone(annotations.find(a=>a.id===id)?.geometry)]));
+    for (const id of selectedIds) {
+      const a = annotations.find(x=>x.id===id);
+      if (a) translateAnnotGeometry(a, dx, dy);
+    }
+    pushUndo({ execute(){}, undo(){ for(const[id,g]of snapBefore){const a=annotations.find(x=>x.id===id);if(a&&g)a.geometry=structuredClone(g);} baseDirty=selDirty=true; } });
+    baseDirty=selDirty=true;
+  }
+});
+
+// ─── Toolbar wiring ────────────────────────────────────────────────────────
+document.querySelectorAll('[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => selectTool(btn.dataset.tool));
+});
+
+function selectTool(id) {
+  activeTool = id;
+  document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool===id));
+  setSelection(new Set());
+  ctxOv.clearRect(0,0,DOC_W*zoom,DOC_H*zoom);
+}
+
+// Colour picker
+const colourDrop = document.getElementById('colour-drop');
+document.getElementById('btn-colour').addEventListener('click', e => {
+  e.stopPropagation();
+  colourDrop.classList.toggle('open');
+});
+document.addEventListener('click', () => colourDrop.classList.remove('open'));
+
+const grid = document.getElementById('colour-grid');
+COLOURS.forEach(c => {
+  const d = document.createElement('div');
+  d.className = 'c-dot'; d.style.background = c; d.title = c;
+  d.addEventListener('click', () => setColour(c));
+  grid.appendChild(d);
+});
+document.getElementById('custom-colour').addEventListener('input', e => setColour(e.target.value));
+
+function setColour(c) {
+  const r = parseInt(c.slice(1,3),16), g2 = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
+  activeStyle.strokeColor = c;
+  activeStyle.fillColor   = `rgba(${r},${g2},${b},0.18)`;
+  drawSwatch();
+  colourDrop.classList.remove('open');
+  // Apply to selected
+  if (selectedIds.size > 0) {
+    for (const id of selectedIds) {
+      const a = annotations.find(x=>x.id===id);
+      if (a) { a.style.strokeColor=c; a.style.fillColor=`rgba(${r},${g2},${b},0.18)`; }
+    }
+    baseDirty = selDirty = true;
+  }
+}
+
+function drawSwatch() {
+  const sw = document.getElementById('swatch');
+  const ctx = sw.getContext('2d');
+  ctx.clearRect(0,0,22,22);
+  ctx.fillStyle = activeStyle.strokeColor;
+  ctx.beginPath();
+  ctx.roundRect(1,1,20,20,4);
+  ctx.fill();
+}
+drawSwatch();
+
+document.getElementById('sel-width').addEventListener('change', e => {
+  activeStyle.strokeWidth = +e.target.value;
+  if (selectedIds.size > 0) {
+    for (const id of selectedIds) { const a=annotations.find(x=>x.id===id); if(a)a.style.strokeWidth=+e.target.value; }
+    baseDirty=selDirty=true;
+  }
+});
+
+const opacityRange = document.getElementById('range-opacity');
+const opacityLbl   = document.getElementById('lbl-opacity');
+opacityRange.addEventListener('input', e => {
+  activeStyle.opacity = e.target.value/100;
+  opacityLbl.textContent = e.target.value+'%';
+  if (selectedIds.size > 0) {
+    for (const id of selectedIds) { const a=annotations.find(x=>x.id===id); if(a)a.style.opacity=e.target.value/100; }
+    baseDirty=selDirty=true;
+  }
+});
+
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-redo').addEventListener('click', redo);
+document.getElementById('btn-delete').addEventListener('click', () => {
+  if (selectedIds.size > 0) { execCmd(removeCmd([...selectedIds])); baseDirty=selDirty=true; }
+});
+
+// ─── Import / Export ───────────────────────────────────────────────────────
+document.getElementById('btn-save').addEventListener('click', () => {
+  const doc = { schemaVersion:SCHEMA_VERSION, docId:DOC_ID, exportedAt:new Date().toISOString(), annotations };
+  const json = JSON.stringify(doc, null, 2);
+  const blob = new Blob([json], { type:'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`annotations-${DOC_ID}.json`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+});
+
+document.getElementById('btn-import').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type='file'; input.accept='.json,application/json';
+  input.onchange = async () => {
+    try {
+      const text = await input.files[0].text();
+      const doc  = JSON.parse(text);
+      if (!Array.isArray(doc.annotations)) throw new Error('Invalid file');
+      annotations = doc.annotations;
+      setSelection(new Set());
+      baseDirty = selDirty = true;
+      updatePanel();
+      undoStack.length = 0; redoStack.length = 0; syncUndoRedo();
+      alert(`Imported ${annotations.length} annotation(s).`);
+    } catch (e) { alert('Import failed: ' + e.message); }
+  };
+  input.click();
+});
+
+document.getElementById('btn-img').addEventListener('click', () => {
+  // Compose: doc surface + base (all annotations including selected)
+  const w = Math.round(DOC_W * zoom * dpr);
+  const h = Math.round(DOC_H * zoom * dpr);
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(docSurface, 0, 0);
+  // Temporarily render all annotations to a temp canvas
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const tc  = tmp.getContext('2d');
+  tc.scale(dpr, dpr);
+  for (const a of annotations) paintAnnotation(tc, a);
+  ctx.drawImage(tmp, 0, 0);
+  const url = out.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href=url; a.download=`annotated-document-${Date.now()}.png`; a.click();
+});
+
+// ─── Zoom ──────────────────────────────────────────────────────────────────
+function setZoom(z) {
+  zoom = Math.max(0.25, Math.min(4, z));
+  resizeCanvases();
+  const pct = Math.round(zoom*100)+'%';
+  document.getElementById('zoom-label').textContent = pct;
+  document.getElementById('tb-zoom').textContent = pct;
+  baseDirty = selDirty = true;
+}
+
+document.getElementById('zout').addEventListener('click', () => setZoom(zoom * 0.8));
+document.getElementById('zin').addEventListener('click',  () => setZoom(zoom * 1.25));
+document.getElementById('zone').addEventListener('click', () => setZoom(1));
+document.getElementById('zfit').addEventListener('click', () => {
+  const hostW = document.getElementById('canvas-host').clientWidth - 56;
+  setZoom(hostW / DOC_W);
+});
+
+// Mouse-wheel zoom
+document.getElementById('canvas-host').addEventListener('wheel', e => {
+  e.preventDefault();
+  setZoom(zoom * (e.deltaY < 0 ? 1.1 : 0.9));
+}, { passive: false });
+
+// ─── Panel ────────────────────────────────────────────────────────────────
+const TYPE_ICONS = { highlight:'▬', freehand:'✏️', text:'T', comment:'💬', rectangle:'▭', ellipse:'○', arrow:'→', line:'╱' };
+
+function updatePanel() {
+  const filter = document.getElementById('panel-filter').value.toLowerCase();
+  const list   = document.getElementById('panel-list');
+  const visible = annotations.filter(a =>
+    !filter ||
+    a.type.includes(filter) ||
+    (a.author||'').toLowerCase().includes(filter) ||
+    (a.meta?.text||'').toLowerCase().includes(filter)
+  );
+
+  document.getElementById('panel-count').textContent = visible.length;
+
+  if (!visible.length) {
+    list.innerHTML = `<div class="p-empty"><p>No annotations yet.</p><p class="p-hint">Pick a tool from the toolbar and draw on the document.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = visible.map((a,i) => {
+    const icon   = TYPE_ICONS[a.type] || '●';
+    const colour = a.style.strokeColor || '#007AFF';
+    const text   = (a.meta?.text||'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').slice(0,80);
+    const sel    = selectedIds.has(a.id) ? 'selected' : '';
+    return `<div class="p-item ${sel}" data-id="${a.id}">
+      <div class="p-icon" style="background:${colour}">${icon}</div>
+      <div class="p-body">
+        <div class="p-type">${a.type.charAt(0).toUpperCase()+a.type.slice(1)}</div>
+        <div class="p-author">${a.author} · p.${a.pageIndex+1}</div>
+        ${text ? `<div class="p-text">${escHtml(text)}</div>` : ''}
+      </div>
+      <button class="p-del" title="Delete" data-del-id="${a.id}">×</button>
+    </div>`;
+  }).join('');
+
+  // Wire clicks
+  list.querySelectorAll('.p-item').forEach(el => {
+    el.addEventListener('click', () => {
+      setSelection(new Set([el.dataset.id]));
+      baseDirty = selDirty = true;
+    });
+  });
+  list.querySelectorAll('.p-del').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      execCmd(removeCmd([btn.dataset.delId]));
+      baseDirty = selDirty = true;
+    });
+  });
+}
+
+function highlightPanel() {
+  document.querySelectorAll('.p-item').forEach(el => {
+    el.classList.toggle('selected', selectedIds.has(el.dataset.id));
+  });
+}
+
+document.getElementById('panel-filter').addEventListener('input', updatePanel);
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ─── Init ──────────────────────────────────────────────────────────────────
+setZoom(1);
+updatePanel();
+
+// Welcome toast
+setTimeout(() => {
+  const t = document.createElement('div');
+  t.style.cssText='position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(28,28,30,0.9);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:999;pointer-events:none;transition:opacity .4s';
+  t.textContent='✏️  Pick any annotation tool from the toolbar and start marking up the document!';
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),500)}, 4000);
+}, 300);
+</script>
+</body>
+</html>

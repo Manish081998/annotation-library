@@ -1,0 +1,63 @@
+/* Global demo styles */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  overflow: hidden; /* prevent page-level scrollbar; each demo manages its own scroll */
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 14px;
+  color: #1c1c1e;
+  background: #f2f2f7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Navigation tabs */
+.demo-tabs {
+  display: flex;
+  background: #1c1c1e;
+  padding: 0 16px;
+  gap: 2px;
+  flex-shrink: 0;
+
+  a {
+    display: block;
+    padding: 12px 20px;
+    color: rgba(255,255,255,0.6);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+
+    &.active, &:hover {
+      color: #fff;
+    }
+    &.active {
+      border-bottom-color: #007aff;
+    }
+  }
+}
+
+.demo-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Document host for image/email demos */
+.doc-host {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  background: #e5e5ea;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px;
+}

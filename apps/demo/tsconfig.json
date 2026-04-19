@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist/out-tsc",
+    "paths": {
+      "@adticorp/annot-core": ["../../packages/annot-core/src/index.ts"],
+      "@adticorp/annot-renderer": ["../../packages/annot-renderer/src/index.ts"],
+      "@adticorp/annot-angular": ["../../packages/annot-angular/src/index.ts"]
+    }
+  },
+  "files": ["src/main.ts"],
+  "include": ["src/**/*.ts"]
+}
